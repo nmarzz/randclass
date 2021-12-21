@@ -8,6 +8,7 @@ import torch.optim as optim
 from torch.optim.lr_scheduler import ReduceLROnPlateau, CosineAnnealingLR
 import numpy as np
 from logger import Logger
+from loss_functions import get_loss_function
 
 
 class Trainer():
@@ -50,7 +51,7 @@ class Trainer():
         
         self.model.to(self.device)
 
-        self.loss_function = nn.CrossEntropyLoss()
+        self.loss_function = get_loss_function(args.loss_function)
         if args.optimizer == 'sgd':
             self.optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum)
         elif args.optimizer == 'adam':

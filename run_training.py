@@ -16,6 +16,7 @@ import torch.multiprocessing as mp
 def get_args(parser):
     """Collect command line arguments."""
     parser.add_argument('--model', type=str, default='mlp')
+    parser.add_argument('--loss-function', type=str, default='cross_entropy')
     parser.add_argument('--dataset', type=str)
     parser.add_argument('--load-path', type=str)    
     parser.add_argument('--pretrained', action='store_true')
@@ -24,7 +25,7 @@ def get_args(parser):
                             Can also specify multiple devices (separated by spaces) for multiprocessing.')
     parser.add_argument('--optimizer', type=str, choices=['sgd', 'adam'], default='sgd', metavar='O')
     parser.add_argument('--lr', type=float, default=0.01)
-    parser.add_argument('--weight-decay', type=float, default=1e-5)
+    parser.add_argument('--weight-decay', type=float, default=0)
     parser.add_argument('--momentum', type=float, default=0.9)
     parser.add_argument('--clip', type=float, default=100, help='Clip the gradient norm. Helps when training with our decomposed layer')
     parser.add_argument('--plateau-patience', type=int, default=5)
