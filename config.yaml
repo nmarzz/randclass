@@ -1,0 +1,4 @@
+log_dir: logs
+data_dir: data
+tiny_imagenet_path: /mnt/data/scratch/data/tiny-imagenet-200-kc/
+imagenet_path: /mnt/data/scratch/data/imagenet/
