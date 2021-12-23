@@ -8,7 +8,7 @@ import torch.optim as optim
 from torch.optim.lr_scheduler import ReduceLROnPlateau, CosineAnnealingLR
 import numpy as np
 from logger import Logger
-from loss_functions import get_loss_function
+from loss_functions import get_loss_function, la_roux_loss
 
 
 class Trainer():
@@ -48,20 +48,25 @@ class Trainer():
         self.log_dir = logger.get_log_dir()
         self.num_devices = len(args.device)
         self.clip = args.clip
-        
+        self.old_parameters = None
+
         self.model.to(self.device)
 
+        self.loss_name = args.loss_function
         self.loss_function = get_loss_function(args.loss_function)
         if args.optimizer == 'sgd':
-            self.optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum)
+            self.optimizer = optim.SGD(
+                model.parameters(), lr=args.lr, momentum=args.momentum)
         elif args.optimizer == 'adam':
-            self.optimizer = optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
+            self.optimizer = optim.Adam(
+                model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
         else:
             raise ValueError('Optimizer not supported')
 
         self.sched_str = args.scheduler
         if self.sched_str == 'plateau':
-            self.scheduler = ReduceLROnPlateau(self.optimizer, patience=args.plateau_patience, verbose=True)
+            self.scheduler = ReduceLROnPlateau(
+                self.optimizer, patience=args.plateau_patience, verbose=True)
             self.plateau_factor = 0.1
             self.change_epochs = []
         elif self.sched_str == 'cosine':
@@ -72,21 +77,42 @@ class Trainer():
 
     def train(self):
         epochs_until_stop = self.early_stop
+        if self.loss_name == 'la_roux':
+                self.old_parameters = self.model.state_dict()
+
+        # Get losses at initialization
+        val_loss, val_acc, val_acc5 = self.validate()
+        train_loss, train_acc, train_acc5 = self.validate(train = True)
+        self.train_losses.append(train_loss)
+        self.val_losses.append(val_loss)
+        self.train_accs.append(train_acc)
+        self.val_accs.append(val_acc)
+        self.train_accs5.append(train_acc5)
+        self.val_accs5.append(val_acc5)
+
         for epoch in range(1, self.epochs + 1):
+            if self.loss_name == 'la_roux':
+                self.old_parameters = self.model.state_dict()
+
             train_loss, train_acc, train_acc5 = self.train_epoch(epoch)
             val_loss, val_acc, val_acc5 = self.validate()
 
             self.logger.log('\n')
             self.logger.log(f'Training: Average Loss {train_loss}')
             if train_acc is not None:
-                self.logger.log('Training set: Average top-1 accuracy: {:.2f}'.format(train_acc))
-                self.logger.log('Training set: Average top-5 accuracy: {:.2f}'.format(train_acc5))
-                self.logger.log('Validation set: Average loss: {:.6f}'.format(val_loss))
+                self.logger.log(
+                    'Training set: Average top-1 accuracy: {:.2f}'.format(train_acc))
+                self.logger.log(
+                    'Training set: Average top-5 accuracy: {:.2f}'.format(train_acc5))
+                self.logger.log(
+                    'Validation set: Average loss: {:.6f}'.format(val_loss))
                 self.logger.log('\n')
 
             if val_acc is not None:
-                self.logger.log('Validation set: Top-1 Accuracy: {:.2f}'.format(val_acc))
-                self.logger.log('Validation set: Top-5 Accuracy: {:.2f}'.format(val_acc5))
+                self.logger.log(
+                    'Validation set: Top-1 Accuracy: {:.2f}'.format(val_acc))
+                self.logger.log(
+                    'Validation set: Top-5 Accuracy: {:.2f}'.format(val_acc5))
                 self.logger.log('\n')
                 self.logger.log('\n')
 
@@ -97,8 +123,8 @@ class Trainer():
             self.train_accs5.append(train_acc5)
             self.val_accs5.append(val_acc5)
 
-            # Check if validation loss is worsening
-            if val_loss > min(self.val_losses):
+            # Check if validation accuracy is worsening
+            if val_acc <= max(self.val_accs):
                 epochs_until_stop -= 1
                 if epochs_until_stop == 0:  # Early stopping initiated
                     break
@@ -109,9 +135,9 @@ class Trainer():
                     current_model_path = self.model_path
                     self.logger.log("Saving model...")
 
-                
                     if self.num_devices > 1:
-                        torch.save(self.model.module.state_dict(), current_model_path)
+                        torch.save(self.model.module.state_dict(),
+                                   current_model_path)
                     else:
                         torch.save(self.model.state_dict(), current_model_path)
                     self.logger.log("Model saved.\n")
@@ -121,15 +147,18 @@ class Trainer():
                 if self.optimizer.param_groups[0]['lr'] == self.plateau_factor * self.lr:
                     self.change_epochs.append(epoch)
                     self.lr = self.plateau_factor * self.lr
-                    self.logger.log("Learning rate decreasing to {}\n".format(self.lr))
+                    self.logger.log(
+                        "Learning rate decreasing to {}\n".format(self.lr))
             else:
                 self.scheduler.step()
 
         if self.idx == 0:
             self.train_report()
+            self.logger.log_results(self.train_losses, self.val_losses,
+                                    self.train_accs, self.val_accs, self.train_accs5, self.val_accs5)
 
     def train_report(self):
-        best_epoch = np.argmin(self.val_losses)
+        best_epoch = np.argmax(self.val_accs)
         self.logger.log("Training complete.\n")
         self.logger.log("Best Epoch: {}".format(best_epoch + 1))
         self.logger.log("Training Loss: {:.6f}".format(
@@ -166,8 +195,13 @@ class GeneralTrainer(Trainer):
         for batch_idx, (data, target) in enumerate(self.train_loader):
             data, target = data.to(self.device), target.to(self.device)
             self.optimizer.zero_grad()
-            output = self.model(data)
-            loss = self.loss_function(output, target)
+
+            if self.loss_name == 'la_roux':
+                loss, output = self.loss_function(
+                    data, target, self.model, self.old_parameters)
+            else:
+                output = self.model(data)
+                loss = self.loss_function(output, target)
 
             top1_acc, top5_acc = compute_accuracy(output, target)
             train_loss.update(loss.item())
@@ -183,14 +217,20 @@ class GeneralTrainer(Trainer):
                 logged_loss = train_loss.get_avg()
 
                 log_str = 'Train Epoch {} [{}/{} ({:.0f}%)]\tLoss: {:6f}'.format(
-                    epoch, batch_idx * len(data), int(len(self.train_loader.dataset) / self.num_devices),
+                    epoch, batch_idx *
+                    len(data), int(
+                        len(self.train_loader.dataset) / self.num_devices),
                     100. * batch_idx / len(self.train_loader), logged_loss)
                 self.logger.log(log_str)
 
         return train_loss.get_avg(), train_top1_acc.get_avg(), train_top5_acc.get_avg()
 
-    def validate(self):
-        return predict(self.model, self.device, self.val_loader, self.loss_function)
+    def validate(self,train :bool = False ):
+        la_roux = self.loss_name == 'la_roux'
+        if train:
+            return predict(self.model, self.device, self.train_loader, self.loss_function, la_roux=la_roux, old_parameters=self.old_parameters)
+        else:
+            return predict(self.model, self.device, self.val_loader, self.loss_function, la_roux=la_roux, old_parameters=self.old_parameters)
 
 
 class AverageMeter():
@@ -226,15 +266,17 @@ def compute_accuracy(output, target):
         _, pred = output.topk(5, 1, True, True)
         pred = pred.t()
         correct = pred.eq(target.view(1, -1).expand_as(pred))
-        top1_acc = correct[:1].view(-1).float().sum(0, keepdim=True) * 100.0 / batch_size
-        top5_acc = correct[:5].reshape(-1).float().sum(0, keepdim=True) * 100.0 / batch_size
+        top1_acc = correct[:1].view(-1).float().sum(0,
+                                                    keepdim=True) * 100.0 / batch_size
+        top5_acc = correct[:5].reshape(-1).float().sum(0,
+                                                       keepdim=True) * 100.0 / batch_size
 
     return top1_acc.item(), top5_acc.item()
 
 
 def predict(model: nn.Module, device: torch.device,
             loader: torch.utils.data.DataLoader, loss_function: nn.Module,
-            precision: str = '32', calculate_confusion: bool = False) -> tuple([float, float]):
+            precision: str = '32', calculate_confusion: bool = False, la_roux: bool = False, old_parameters: dict = None) -> tuple([float, float]):
     """Evaluate supervised model on data.
 
     Args:
@@ -250,24 +292,37 @@ def predict(model: nn.Module, device: torch.device,
     """
     model.eval()
 
-    loss = 0
+    total_loss = 0
     acc1 = 0
     acc5 = 0
     confusion = []
+    n = 0
     with torch.no_grad():
         for data, target in loader:
             data, target = data.to(device), target.to(device)
             output = model(data)
-            loss += loss_function(output, target).item()
+
+            if la_roux:
+                loss, output = loss_function(
+                    data, target, model, old_parameters)
+            else:
+                output = model(data)
+                loss = loss_function(output, target)
+            
+            total_loss += loss.item()
+            
 
             cur_acc1, cur_acc5 = compute_accuracy(output, target)
             acc1 += cur_acc1
             acc5 += cur_acc5
+    
+    total_loss, acc1, acc5 = total_loss / len(loader), acc1 / \
+        len(loader), acc5 / len(loader)
 
-    loss, acc1, acc5 = loss / len(loader), acc1 / len(loader), acc5 / len(loader)
+    
 
     if calculate_confusion:
         confusion = np.mean(np.stack(confusion), axis=0)
-        return loss, acc1, acc5, confusion.round(2)
+        return total_loss, acc1, acc5, confusion.round(2)
     else:
-        return loss, acc1, acc5
+        return total_loss, acc1, acc5

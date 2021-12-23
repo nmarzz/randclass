@@ -4,6 +4,7 @@ from training import GeneralTrainer
 from models import get_model
 from loaders import get_loader
 from logger import Logger
+from utils import freeze_embedder
 
 import numpy as np
 import torch
@@ -20,6 +21,7 @@ def get_args(parser):
     parser.add_argument('--dataset', type=str)
     parser.add_argument('--load-path', type=str)    
     parser.add_argument('--pretrained', action='store_true')
+    parser.add_argument('--freeze-embedder', action='store_true')
     parser.add_argument('--device', type=str, nargs='+', default=['cpu'],
                         help='Name of CUDA device(s) being used (if any). Otherwise will use CPU. \
                             Can also specify multiple devices (separated by spaces) for multiprocessing.')
@@ -34,7 +36,7 @@ def get_args(parser):
     parser.add_argument('--early-stop', type=int, default=50)
     parser.add_argument('--hidden-dim', type=int, default=32)
     parser.add_argument('--batch-size', type=int, default=64)
-    parser.add_argument('--seed', type=int, default=1331)
+    parser.add_argument('--seed', type=int, default=1)
 
     args = parser.parse_args()
 
@@ -57,9 +59,10 @@ def main_worker(idx: int, num_gpus: int, distributed: bool, args: argparse.Names
 
     # Get model    
     model = get_model(args.model, args)
+    if args.freeze_embedder:
+        freeze_embedder(model)
 
-    model.to(device)
-
+    model.to(device)        
     if distributed:
         model = DistributedDataParallel(model, device_ids=[device])
 
