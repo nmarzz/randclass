@@ -233,6 +233,10 @@ def get_model(model_type: str, args: Namespace):
         input_dim = 32*32*3
         num_channels = 3
         num_classes = 10
+    elif args.dataset == 'cifar100':
+        input_dim = 32*32*3
+        num_channels = 3
+        num_classes = 100
     elif (args.dataset == 'mnist') or (args.dataset == 'fashion_mnist'):
         input_dim = 28*28
         num_channels = 1

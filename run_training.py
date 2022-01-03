@@ -20,8 +20,9 @@ def get_args(parser):
     parser.add_argument('--loss-function', type=str, default='cross_entropy')
     parser.add_argument('--dataset', type=str)
     parser.add_argument('--load-path', type=str)    
-    parser.add_argument('--pretrained', action='store_true')
+    parser.add_argument('--pretrained', action='store_true')    
     parser.add_argument('--freeze-embedder', action='store_true')
+    parser.add_argument('--random-labels', action='store_true')
     parser.add_argument('--device', type=str, nargs='+', default=['cpu'],
                         help='Name of CUDA device(s) being used (if any). Otherwise will use CPU. \
                             Can also specify multiple devices (separated by spaces) for multiprocessing.')
@@ -33,8 +34,7 @@ def get_args(parser):
     parser.add_argument('--plateau-patience', type=int, default=5)
     parser.add_argument('--scheduler', type=str, choices=['plateau', 'cosine'], default='plateau')
     parser.add_argument('--epochs', type=int, default=5)
-    parser.add_argument('--early-stop', type=int, default=50)
-    parser.add_argument('--hidden-dim', type=int, default=32)
+    parser.add_argument('--early-stop', type=int, default=50)    
     parser.add_argument('--batch-size', type=int, default=64)
     parser.add_argument('--seed', type=int, default=1)
 

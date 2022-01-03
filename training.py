@@ -1,6 +1,7 @@
 ''' Implements a Trainer class along with model specific trainers that are subtypes of Trainer'''
 
 import torch
+import copy
 from torch import nn
 from torch.utils.data import DataLoader
 from argparse import Namespace
@@ -49,6 +50,7 @@ class Trainer():
         self.num_devices = len(args.device)
         self.clip = args.clip
         self.old_parameters = None
+        self.random_labels = args.random_labels
 
         self.model.to(self.device)
 
@@ -92,7 +94,8 @@ class Trainer():
 
         for epoch in range(1, self.epochs + 1):
             if self.loss_name == 'la_roux':
-                self.old_parameters = self.model.state_dict()
+                print('Updating old parameters')
+                self.old_parameters = self.model.state_dict().copy()
 
             train_loss, train_acc, train_acc5 = self.train_epoch(epoch)
             val_loss, val_acc, val_acc5 = self.validate()
@@ -193,6 +196,8 @@ class GeneralTrainer(Trainer):
         train_top1_acc = AverageMeter()
         train_top5_acc = AverageMeter()
         for batch_idx, (data, target) in enumerate(self.train_loader):
+            if self.random_labels:
+                target = torch.randint(0, 100,size = target.shape)
             data, target = data.to(self.device), target.to(self.device)
             self.optimizer.zero_grad()
 

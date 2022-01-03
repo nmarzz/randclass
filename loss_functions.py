@@ -18,12 +18,12 @@ def la_roux_loss(x: torch.tensor, target: torch.tensor, model: nn.Module, old_pa
 
     output = model(x)
     with torch.no_grad():
-        model.eval()
-        params = model.state_dict()        
+        # model.eval()
+        params = model.state_dict().copy()        
         model.load_state_dict(old_parameters)
         pold = F.softmax(model(x),dim = 1)
         model.load_state_dict(params)
-        model.train()
+        # model.train()
     
     
     logp = torch.log(F.softmax(output,dim = 1))   
@@ -31,7 +31,7 @@ def la_roux_loss(x: torch.tensor, target: torch.tensor, model: nn.Module, old_pa
 
     # loss = -torch.sum(q * logp) / q.shape[0]
     loss = -torch.sum(q * logp * pold) / q.shape[0]
-    
+    # loss = -torch.sum(q * logp * pold) 
     
     
     # This recreates cross entropy
