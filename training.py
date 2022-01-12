@@ -1,6 +1,7 @@
 ''' Implements a Trainer class along with model specific trainers that are subtypes of Trainer'''
 
 import torch
+import matplotlib.pyplot as plt
 import copy
 from torch import nn
 from torch.utils.data import DataLoader
@@ -36,6 +37,8 @@ class Trainer():
         self.epochs = args.epochs
 
         self.iters = []
+        self.loss_name = args.loss_function
+        self.logged_train_losses = []
         self.train_losses = []
         self.val_losses = []
         self.train_accs = []
@@ -49,11 +52,19 @@ class Trainer():
         self.log_dir = logger.get_log_dir()
         self.num_devices = len(args.device)
         self.clip = args.clip
-        self.old_parameters = None
+        self.old_model = None
         self.random_labels = args.random_labels
+        self.reinit = args.reinit
+
+        if self.reinit:
+            self.original_parameters = copy.deepcopy(self.model.state_dict())
+        
+        self.plot_interval = len(self.train_loader) // 10
+        self.plots_dir = logger.get_plots_dir()
 
         self.model.to(self.device)
 
+        self.la_roux_epochs = args.la_roux_epochs
         self.loss_name = args.loss_function
         self.loss_function = get_loss_function(args.loss_function)
         if args.optimizer == 'sgd':
@@ -80,7 +91,7 @@ class Trainer():
     def train(self):
         epochs_until_stop = self.early_stop
         if self.loss_name == 'la_roux':
-                self.old_parameters = self.model.state_dict()
+                self.old_model = copy.deepcopy(self.model)                
 
         # Get losses at initialization
         val_loss, val_acc, val_acc5 = self.validate()
@@ -93,9 +104,12 @@ class Trainer():
         self.val_accs5.append(val_acc5)
 
         for epoch in range(1, self.epochs + 1):
-            if self.loss_name == 'la_roux':
+            if self.loss_name == 'la_roux' and (epoch % self.la_roux_epochs == 0):
                 print('Updating old parameters')
-                self.old_parameters = self.model.state_dict().copy()
+                self.old_model = copy.deepcopy(self.model)
+                if self.reinit:
+                    print('Re-initializing model')
+                    self.model.load_state_dict(self.original_parameters)
 
             train_loss, train_acc, train_acc5 = self.train_epoch(epoch)
             val_loss, val_acc, val_acc5 = self.validate()
@@ -127,9 +141,10 @@ class Trainer():
             self.val_accs5.append(val_acc5)
 
             # Check if validation accuracy is worsening
-            if val_acc <= max(self.val_accs):
+            if val_acc <= max(self.val_accs[:-1]):
                 epochs_until_stop -= 1
                 if epochs_until_stop == 0:  # Early stopping initiated
+                    print('Stopping due to early stopping')
                     break
             else:
                 epochs_until_stop = self.early_stop
@@ -178,6 +193,13 @@ class Trainer():
                 self.eval_set, self.val_accs[best_epoch]))
             self.logger.log("{} Top-5 Accuracy: {:.2f}".format(
                 self.eval_set, self.val_accs5[best_epoch]))
+        
+        #Save loss and accuracy plots
+        train_val_plots(
+            self.train_losses, self.val_losses, "Loss", self.plots_dir, self.change_epochs)
+        if self.train_accs is not None and self.val_accs is not None:
+            train_val_plots(
+                self.train_accs, self.val_accs, "Accuracy", self.plots_dir, self.change_epochs)
 
     def train_epoch(self, epoch):
         pass
@@ -203,7 +225,7 @@ class GeneralTrainer(Trainer):
 
             if self.loss_name == 'la_roux':
                 loss, output = self.loss_function(
-                    data, target, self.model, self.old_parameters)
+                    data, target, self.model, self.old_model)
             else:
                 output = self.model(data)
                 loss = self.loss_function(output, target)
@@ -220,7 +242,9 @@ class GeneralTrainer(Trainer):
 
             if batch_idx % 10 == 0:
                 logged_loss = train_loss.get_avg()
-
+                
+                self.iters.append((epoch-1) + batch_idx / len(self.train_loader))
+                self.logged_train_losses.append(logged_loss)
                 log_str = 'Train Epoch {} [{}/{} ({:.0f}%)]\tLoss: {:6f}'.format(
                     epoch, batch_idx *
                     len(data), int(
@@ -228,14 +252,18 @@ class GeneralTrainer(Trainer):
                     100. * batch_idx / len(self.train_loader), logged_loss)
                 self.logger.log(log_str)
 
+            if batch_idx % self.plot_interval == 0:
+                train_loss_plot(
+                    self.iters, self.logged_train_losses, self.plots_dir)
+
         return train_loss.get_avg(), train_top1_acc.get_avg(), train_top5_acc.get_avg()
 
     def validate(self,train :bool = False ):
         la_roux = self.loss_name == 'la_roux'
         if train:
-            return predict(self.model, self.device, self.train_loader, self.loss_function, la_roux=la_roux, old_parameters=self.old_parameters)
+            return predict(self.model, self.device, self.train_loader, self.loss_function, la_roux=la_roux, old_model=self.old_model)
         else:
-            return predict(self.model, self.device, self.val_loader, self.loss_function, la_roux=la_roux, old_parameters=self.old_parameters)
+            return predict(self.model, self.device, self.val_loader, self.loss_function, la_roux=la_roux, old_model=self.old_model)
 
 
 class AverageMeter():
@@ -281,7 +309,7 @@ def compute_accuracy(output, target):
 
 def predict(model: nn.Module, device: torch.device,
             loader: torch.utils.data.DataLoader, loss_function: nn.Module,
-            precision: str = '32', calculate_confusion: bool = False, la_roux: bool = False, old_parameters: dict = None) -> tuple([float, float]):
+            precision: str = '32', calculate_confusion: bool = False, la_roux: bool = False, old_model: nn.Module = None) -> tuple([float, float]):
     """Evaluate supervised model on data.
 
     Args:
@@ -309,7 +337,7 @@ def predict(model: nn.Module, device: torch.device,
 
             if la_roux:
                 loss, output = loss_function(
-                    data, target, model, old_parameters)
+                    data, target, model, old_model)
             else:
                 output = model(data)
                 loss = loss_function(output, target)
@@ -331,3 +359,38 @@ def predict(model: nn.Module, device: torch.device,
         return total_loss, acc1, acc5, confusion.round(2)
     else:
         return total_loss, acc1, acc5
+
+def train_loss_plot(iters: list([float]), train_vals: list([float]), 
+    save_dir: str) -> None:
+    plt.figure()
+    plt.plot(iters, train_vals, 'b-')
+    plt.xlabel('Epochs')
+    plt.ylabel('Training Loss')
+    plt.savefig(save_dir + '/train_loss_plot.png')
+    plt.close()
+
+
+def train_val_plots(train_vals: list([float]), val_vals: list([float]), 
+    y_label: str, save_dir: str, change_epochs: list([int])) -> None:
+    """Plotting loss or accuracy as a function of epoch number.
+
+    Args:
+        train_vals: y-axis training values (loss or accuracy).
+        val_vals: y-axis validation values (loss or accuracy).
+        y_label: y-axis label (loss or accuracy).
+        save_dir: Directory where plots will be saved.
+        change_epochs: Epochs where learning rate changes.
+
+    """
+    epochs = np.arange(1,len(train_vals)+1)
+    plt.figure()
+    plt.plot(epochs, train_vals, 'b-')
+    plt.plot(epochs, val_vals, 'r-')
+    if change_epochs is not None:
+        for e in change_epochs:
+            plt.axvline(e, linestyle='--', color='0.8')
+    plt.legend(['Training', 'Validation'])
+    plt.xlabel('Epoch')
+    plt.ylabel(y_label)
+    plt.savefig(save_dir + '/' + y_label + '_plots')
+    plt.close()

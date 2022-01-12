@@ -4,10 +4,8 @@ from torch import nn
 from argparse import Namespace
 import torch.nn.functional as F
 import torchvision
-import math
-import numpy as np
 import torch
-from typing import Optional, Union
+from vit_pytorch import ViT
 
 
 class ResNet18(nn.Module):
@@ -31,13 +29,14 @@ class ResNet18(nn.Module):
         super().__init__()
         if pretrained:
             self.model = torchvision.models.resnet18(pretrained=True)
-            self.model.fc = nn.Linear(512,num_classes)
+            self.model.fc = nn.Linear(512, num_classes)
         else:
             self.model = torchvision.models.resnet18(num_classes=num_classes)
         self.dim = 512
         if one_channel:
             # Set number of input channels to 1 (since MNIST images are greyscale)
-            self.model.conv1 = nn.Conv2d(1, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False)
+            self.model.conv1 = nn.Conv2d(1, 64, kernel_size=(
+                7, 7), stride=(2, 2), padding=(3, 3), bias=False)
 
     def forward(self, x):
         return self.model(x)
@@ -68,13 +67,14 @@ class ResNet34(nn.Module):
         self.dim = 512
         if pretrained:
             self.model = torchvision.models.resnet34(pretrained=True)
-            self.model.fc = nn.Linear(self.dim,num_classes)
+            self.model.fc = nn.Linear(self.dim, num_classes)
         else:
             self.model = torchvision.models.resnet34(num_classes=num_classes)
-        
+
         if one_channel:
             # Set number of input channels to 1 (since MNIST images are greyscale)
-            self.model.conv1 = nn.Conv2d(1, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False)
+            self.model.conv1 = nn.Conv2d(1, 64, kernel_size=(
+                7, 7), stride=(2, 2), padding=(3, 3), bias=False)
 
     def forward(self, x):
         return self.model(x)
@@ -91,9 +91,10 @@ class ResNet50(nn.Module):
         dim: Dimension of the last embedding layer
 
     """
+
     def __init__(self, num_classes=10, one_channel=False, pretrained=False):
         """Instantiate object of class ResNet50.
-        
+
         Args:
             num_classes: Number of classes (for applying model to classification task).
             one_channel: Whether or not input data has one colour channel (for MNIST).
@@ -104,18 +105,20 @@ class ResNet50(nn.Module):
         self.dim = 2048
         if pretrained:
             self.model = torchvision.models.resnet50(pretrained=True)
-            self.model.fc = nn.Linear(self.dim,num_classes)
+            self.model.fc = nn.Linear(self.dim, num_classes)
         else:
             self.model = torchvision.models.resnet50(num_classes=num_classes)
         if one_channel:
-            #Set number of input channels to 1 (since MNIST images are greyscale)
-            self.model.conv1 = nn.Conv2d(1, 64, kernel_size=(7,7), stride=(2,2), padding=(3,3), bias=False)
+            # Set number of input channels to 1 (since MNIST images are greyscale)
+            self.model.conv1 = nn.Conv2d(1, 64, kernel_size=(
+                7, 7), stride=(2, 2), padding=(3, 3), bias=False)
 
     def forward(self, x):
         return self.model(x)
 
     def get_dim(self):
         return self.dim
+
 
 class ResNet152(nn.Module):
     """Wrapper class for the ResNet152 model (imported from Torch).
@@ -125,9 +128,10 @@ class ResNet152(nn.Module):
         dim: Dimension of the last embedding layer
 
     """
+
     def __init__(self, num_classes=10, one_channel=False, pretrained=False):
         """Instantiate object of class ResNet152.
-        
+
         Args:
             num_classes: Number of classes (for applying model to classification task).
             one_channel: Whether or not input data has one colour channel (for MNIST).
@@ -138,19 +142,19 @@ class ResNet152(nn.Module):
         self.dim = 2048
         if pretrained:
             self.model = torchvision.models.resnet152(pretrained=True)
-            self.model.fc = nn.Linear(self.dim,num_classes)
+            self.model.fc = nn.Linear(self.dim, num_classes)
         else:
             self.model = torchvision.models.resnet152(num_classes=num_classes)
         if one_channel:
-            #Set number of input channels to 1 (since MNIST images are greyscale)
-            self.model.conv1 = nn.Conv2d(1, 64, kernel_size=(7,7), stride=(2,2), padding=(3,3), bias=False)
+            # Set number of input channels to 1 (since MNIST images are greyscale)
+            self.model.conv1 = nn.Conv2d(1, 64, kernel_size=(
+                7, 7), stride=(2, 2), padding=(3, 3), bias=False)
 
     def forward(self, x):
         return self.model(x)
 
     def get_dim(self):
         return self.dim
-
 
 
 # self.model.fc = nn.Linear(self.dim,num_classes)
@@ -170,6 +174,21 @@ class MLP(nn.Module):
         x = F.relu(self.fc1(x))
         x = F.relu(self.fc2(x))
         x = self.fc3(x)
+        return x
+
+
+class Linear(nn.Module):
+    ''' A linear classifier '''
+
+    def __init__(self, input_dim: int, num_classes: int) -> None:
+        super(Linear, self).__init__()
+        self.input_dim = input_dim
+        self.fc = nn.Linear(input_dim, num_classes)
+
+    def forward(self, x):
+        x = x.view(-1, self.input_dim)
+        x = self.fc(x)
+
         return x
 
 
@@ -198,7 +217,8 @@ class SimpleConv(nn.Module):
         super(SimpleConv, self).__init__()
 
         fc1_in = 784 if (num_channels == 1) else 1024
-        self.conv1 = nn.Conv2d(num_channels, 4, kernel_size=3, stride=1, padding=1)
+        self.conv1 = nn.Conv2d(
+            num_channels, 4, kernel_size=3, stride=1, padding=1)
         self.bn1 = nn.BatchNorm2d(4)
         self.maxpool1 = nn.MaxPool2d(kernel_size=2, stride=2)
         self.conv2 = nn.Conv2d(4, 4, kernel_size=3, stride=1, padding=1)
@@ -216,12 +236,10 @@ class SimpleConv(nn.Module):
         x = self.bn2(x)
         x = F.relu(x)
         self.maxpool2(x)
-        x = x.view(x.size(0), -1)
+        x = x.view(x.size(0), -1)        
         x = self.fc1(x)
 
         return x
-
-
 
 
 ################################################################################################################################################
@@ -231,35 +249,48 @@ def get_model(model_type: str, args: Namespace):
 
     if args.dataset == 'cifar10':
         input_dim = 32*32*3
+        image_size = 32
         num_channels = 3
         num_classes = 10
     elif args.dataset == 'cifar100':
         input_dim = 32*32*3
+        image_size = 32
         num_channels = 3
         num_classes = 100
     elif (args.dataset == 'mnist') or (args.dataset == 'fashion_mnist'):
         input_dim = 28*28
+        image_size = 28
         num_channels = 1
         num_classes = 10
     elif args.dataset == 'imagenet':
         input_dim = 224*224
+        image_size = 224
         num_channels = 3
         num_classes = 1000
     else:
-        raise ValueError(f'Model hyper-parameters unavailable for dataset {args.dataset}')
+        raise ValueError(
+            f'Model hyper-parameters unavailable for dataset {args.dataset}')
 
     if model_type == 'mlp':
-        model = MLP(input_dim, num_classes)    
+        model = MLP(input_dim, num_classes)
     elif model_type == 'lenet300':
         model = LeNet300(input_dim, num_classes)
+    elif model_type == 'linear':
+        model = Linear(input_dim, num_classes)
     elif model_type == 'simple_conv':
         model = SimpleConv(num_channels, num_classes)
+    elif model_type == 'vit':
+        model = ViT(image_size=image_size, patch_size=4, num_classes=num_classes,
+                    dim=256, depth=3, heads=3, mlp_dim=512, dropout=0.1, emb_dropout=0.1, channels=num_channels)
     elif model_type == 'resnet18':
-        model = ResNet18(num_classes=num_classes, one_channel=(num_channels == 1), pretrained=args.pretrained)
+        model = ResNet18(num_classes=num_classes, one_channel=(
+            num_channels == 1), pretrained=args.pretrained)
     elif model_type == 'resnet50':
-        model = ResNet50(num_classes=num_classes, one_channel=(num_channels == 1), pretrained=args.pretrained)
+        model = ResNet50(num_classes=num_classes, one_channel=(
+            num_channels == 1), pretrained=args.pretrained)
     elif model_type == 'resnet152':
-        model = ResNet152(num_classes=num_classes, one_channel=(num_channels == 1), pretrained=args.pretrained)
+        model = ResNet152(num_classes=num_classes, one_channel=(
+            num_channels == 1), pretrained=args.pretrained)
     else:
         return ValueError(f'Model {args.model} is unavailable')
 

@@ -13,19 +13,14 @@ def get_loss_function(name: str):
         raise ValueError(f'Loss function {name} not available')
 
 
-def la_roux_loss(x: torch.tensor, target: torch.tensor, model: nn.Module, old_parameters: dict):
+def la_roux_loss(x: torch.tensor, target: torch.tensor, model: nn.Module, old_model: nn.Module):
     ''' The loss function given by -sum p(y|x , old_params) log(p(y|x, variable_params) '''
 
-    output = model(x)
     with torch.no_grad():
-        # model.eval()
-        params = model.state_dict().copy()        
-        model.load_state_dict(old_parameters)
-        pold = F.softmax(model(x),dim = 1)
-        model.load_state_dict(params)
-        # model.train()
-    
-    
+        old_model.eval()                
+        pold = F.softmax(old_model(x),dim = 1)
+                
+    output = model(x)
     logp = torch.log(F.softmax(output,dim = 1))   
     q = F.one_hot(target,num_classes = logp.shape[1])
 

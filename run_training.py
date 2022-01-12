@@ -30,12 +30,14 @@ def get_args(parser):
     parser.add_argument('--lr', type=float, default=0.01)
     parser.add_argument('--weight-decay', type=float, default=0)
     parser.add_argument('--momentum', type=float, default=0.9)
-    parser.add_argument('--clip', type=float, default=100, help='Clip the gradient norm. Helps when training with our decomposed layer')
+    parser.add_argument('--clip', type=float, default=1000, help='Clip the gradient norm. Helps when training with our decomposed layer')
     parser.add_argument('--plateau-patience', type=int, default=5)
     parser.add_argument('--scheduler', type=str, choices=['plateau', 'cosine'], default='plateau')
     parser.add_argument('--epochs', type=int, default=5)
     parser.add_argument('--early-stop', type=int, default=50)    
     parser.add_argument('--batch-size', type=int, default=64)
+    parser.add_argument('--la-roux-epochs', type=int, default=1)
+    parser.add_argument('--reinit', action='store_true')    
     parser.add_argument('--seed', type=int, default=1)
 
     args = parser.parse_args()
@@ -61,7 +63,7 @@ def main_worker(idx: int, num_gpus: int, distributed: bool, args: argparse.Names
     model = get_model(args.model, args)
     if args.freeze_embedder:
         freeze_embedder(model)
-
+        
     model.to(device)        
     if distributed:
         model = DistributedDataParallel(model, device_ids=[device])

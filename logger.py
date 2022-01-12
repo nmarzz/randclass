@@ -34,6 +34,9 @@ class Logger:
             self.model_path = os.path.join(self.dir, 'model.pt')
             self.log_file = open(self.log_path, 'w')
             self.make_header(args)
+            
+            self.plots_dir = os.path.join(self.dir, 'plots')
+            os.mkdir(self.plots_dir)
 
             self.train_results_dir = os.path.join(
                 self.dir, 'train_results.txt')
@@ -58,16 +61,15 @@ class Logger:
             print(string)
 
     def log_results(self, train_loss: list, val_loss: list, train_acc: list, val_acc: list, train_acc5: list, val_acc5: list):
-        with open(self.train_results_dir,'w+') as train_file:
+        with open(self.train_results_dir, 'w+') as train_file:
             train_file.write('LOSS,ACC,ACC5\n')
-            for loss, acc, acc5 in zip(train_loss,train_acc,train_acc5):
+            for loss, acc, acc5 in zip(train_loss, train_acc, train_acc5):
                 train_file.write(f'{loss},{acc},{acc5}\n')
 
-        with open(self.val_results_dir,'w+') as val_file:
+        with open(self.val_results_dir, 'w+') as val_file:
             val_file.write('LOSS,ACC,ACC5\n')
-            for loss, acc, acc5 in zip(val_loss,val_acc,val_acc5):
+            for loss, acc, acc5 in zip(val_loss, val_acc, val_acc5):
                 val_file.write(f'{loss},{acc},{acc5}\n')
-            
 
     def get_model_path(self):
         return self.model_path
@@ -75,13 +77,16 @@ class Logger:
     def get_log_dir(self):
         return self.dir
 
+    def get_plots_dir(self):
+        return self.plots_dir
+
 
 def make_log_dir(args) -> str:
     """Create directory to store log, results file, model"""
 
     dir = os.path.join(
         LOGS_DIR,
-        f'{args.model}_{args.dataset}_{args.optimizer}_lr{args.lr}_batch_size{args.batch_size}')
+        f'{args.model}_{args.dataset}_{args.loss_function}_{args.optimizer}_lr{args.lr}_wd{args.weight_decay}_batch_size{args.batch_size}')
 
     if os.path.exists(dir):
         exists = True
